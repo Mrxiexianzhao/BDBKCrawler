@@ -218,6 +218,7 @@ class CategorySpider(scrapy.Spider):
             f.write(response.body)
         except Exception, err:
           this.logger.error("image file write error. file: %s, err: %r", file_name, err)
+          raise
 
         yield image_info
 
