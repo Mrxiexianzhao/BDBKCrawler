@@ -19,13 +19,12 @@ BAIDU_DOMAIN = ['baidu.com']
 class CategorySpider(scrapy.Spider):
     name = 'bdbk.category'
     allowed_domains = BAIDU_DOMAIN
-    data_path = None
-    redis_client = None
 
     def __init__(self, *args, **kwargs):
         super(CategorySpider, self).__init__(*args, **kwargs)
 
     def start_requests(self):
+        # create dir
         self.data_path = os.path.join('.', self.settings["DATA_PATH"])
         try:
             os.makedirs(self.data_path)
@@ -34,16 +33,18 @@ class CategorySpider(scrapy.Spider):
                 pass
             else:
                 raise
-        yield scrapy.Request(self.settings['START_PAGE'], self.parse)
-
-    def parse(self, response):
+        
+        # redis client
         try:
             self.redis_client = redis.Redis(host=self.settings["REDIS_SERVER_HOST"], port=self.settings["REDIS_SERVER_PORT"], db=0)
+            self.redis_client.flushdb()
+
         except redis.RedisError, err:
             raise err
 
-        self.redis_client.flushdb()
+        yield scrapy.Request(self.settings['START_PAGE'], self.parse)
 
+    def parse(self, response):
         url_re = re.compile('(http[s]?://[^/]+)/.*')
         url = response.url
         base_url = url_re.match(url).groups()[0]
