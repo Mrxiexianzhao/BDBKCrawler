@@ -45,9 +45,6 @@ class CategorySpider(scrapy.Spider):
         yield scrapy.Request(self.settings['START_PAGE'], self.parse)
 
     def parse(self, response):
-        url_re = re.compile('(http[s]?://[^/]+)/.*')
-        url = response.url
-        base_url = url_re.match(url).groups()[0]
         categories_dic = []
         for sel in response.xpath('//a[contains(@href, "taglist")]'):
             category_item = CategoryItem()
