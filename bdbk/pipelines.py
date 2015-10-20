@@ -7,7 +7,6 @@
 
 import os
 
-from bdbk.items import CategoryItem
 from bdbk.items import PersonItem
 from bdbk.items import ImageItem
 
@@ -21,7 +20,7 @@ class StoreDBPipeline(object):
     def __init__(self, mongodb_url, mongodb_dbname):
         self.mongodb_url = mongodb_url
         self.mongodb_dbname = mongodb_dbname
-        self.categori_id = None
+        self.categories = dict()
 
     @classmethod
     def from_crawler(cls, crawler):
@@ -36,6 +35,7 @@ class StoreDBPipeline(object):
         self.mongodb_db = self.mongodb_client[self.mongodb_dbname]
 
     def close_spider(self, spider):
+        self.mongodb_db[TBL_IMAGE_INFO].insert(self.categories)
         self.mongodb_client.close()
 
     def process_item(self, item, spider):
@@ -44,9 +44,10 @@ class StoreDBPipeline(object):
         elif isinstance(item, ImageItem):
             self.mongodb_db[TBL_IMAGE_INFO].insert(dict(item))
         elif isinstance(item, dict):
-            if self.categori_id == None:
-              self.categori_id = self.mongodb_db[TBL_CATEGORY_INFO].insert_one(item).inserted_id
-            else:
-              if item.has_key('_id'):
-                del item['_id']
-              self.mongodb_db[TBL_CATEGORY_INFO].update_one({'_id': self.categori_id}, {'$set': item})
+            category_doc = self.mongodb_db[TBL_CATEGORY_INFO]
+            for k,v in item.items():
+                category = category_doc.find_one({'name': k})
+                if category == None:
+                  category_doc.insert_one({'name': k, 'count': v})
+                else:
+                  category_doc.update_one({'name': k}, {'$set': {'count':v}})

@@ -22,8 +22,6 @@ class CategorySpider(scrapy.Spider):
     name = 'bdbk.category'
     allowed_domains = BAIDU_DOMAIN
 
-    categories = dict()
-
     def __init__(self, url=None, *args, **kwargs):
         self.start_page = url
         self.from_category = False
@@ -116,13 +114,19 @@ class CategorySpider(scrapy.Spider):
 
         # get person tags (人物标签)
         person_tags = list()
+        categories = dict()
         for sel in response.xpath('//span[@class="taglist"]'):
           tag = sel.xpath('text()').extract()[0].replace('\n', '').encode('utf-8', 'ignore')
           person_tags.append(tag)
-          if self.categories.has_key(tag):
-              self.categories[tag] = self.categories[tag] + 1
+          category_cnt = self.redis_client.get(tag)
+          if category_cnt != None:
+              category_cnt = int(category_cnt) + 1
           else:
-              self.categories[tag] = 1
+              category_cnt = 1
+          self.redis_client.set(tag, category_cnt)
+
+          categories[tag] = category_cnt
+
         person_item['tags'] = ' '.join(person_tags)
 
         summary_pic = response.xpath('//div[@class="summary-pic"]/a/img/@src').extract()
@@ -134,7 +138,7 @@ class CategorySpider(scrapy.Spider):
 
         # for the data pipeline
         yield person_item
-        yield self.categories
+        yield categories
 
         # crawling image gallery (图册)
         # for url in response.xpath('//div[@class="summary-pic"]/a/@href').extract()
