@@ -22,8 +22,13 @@ class CategorySpider(scrapy.Spider):
     name = 'bdbk.category'
     allowed_domains = BAIDU_DOMAIN
 
+    categories = dict()
+
     def __init__(self, url=None, *args, **kwargs):
         self.start_page = url
+        self.from_category = False
+        if self.start_page == None:
+            self.from_category = True
         super(CategorySpider, self).__init__(*args, **kwargs)
 
     def start_requests(self):
@@ -45,7 +50,13 @@ class CategorySpider(scrapy.Spider):
 
         if self.start_page == None:
             self.start_page = self.settings['START_PAGE']
-        yield scrapy.Request(self.start_page, self.parse)
+            request = scrapy.Request(self.start_page, self.parse)
+        else:
+            request = scrapy.Request(self.start_page, self.parse_person)
+
+        self.logger.info("Start crawling url: %s" %self.start_page)
+
+        yield request
 
     def parse(self, response):
         for sel in response.xpath('//a[contains(@href, "taglist")]'):
@@ -104,19 +115,31 @@ class CategorySpider(scrapy.Spider):
         person_item['description'] = description
 
         # get person tags (人物标签)
-        person_tags = []
+        person_tags = list()
         for sel in response.xpath('//span[@class="taglist"]'):
           tag = sel.xpath('text()').extract()[0].replace('\n', '').encode('utf-8', 'ignore')
           person_tags.append(tag)
+          if self.categories.has_key(tag):
+              self.categories[tag] = self.categories[tag] + 1
+          else:
+              self.categories[tag] = 1
         person_item['tags'] = ' '.join(person_tags)
+
+        summary_pic = response.xpath('//div[@class="summary-pic"]/a/img/@src').extract()
+        if len(summary_pic) > 0:
+            summary_pic = summary_pic[0].split('/')[-1].split('.')[0]
+        else:
+            summary_pic = ''
+        person_item['summary_pic'] = summary_pic
 
         # for the data pipeline
         yield person_item
+        yield self.categories
 
         # crawling image gallery (图册)
-        image_gallery_urls = response.xpath('//div[@class="summary-pic"]/a/@href').extract()
-        if len(image_gallery_urls) > 0:
-            image_gallery_url = response.urljoin(image_gallery_urls[0].split('?')[0])
+        # for url in response.xpath('//div[@class="summary-pic"]/a/@href').extract()
+        for url in response.xpath('//a[contains(@href, "/picture/")]/@href').extract():
+            image_gallery_url = response.urljoin(url.split('?')[0])
             request = scrapy.Request(image_gallery_url, callback = self.parse_image_gallery)
             request.meta["person_info"] = person_item
             yield request
@@ -129,7 +152,7 @@ class CategorySpider(scrapy.Spider):
 
     def parse_image_gallery(self, response):
         person_info = response.meta['person_info']
-        self.logger.info('Found image gallery from : %s', response.url)
+        self.logger.info('Found Photo Gallery from : %s', response.url)
         album_info_str = "{%s}" % response.xpath('//body/script/text()').re(r'albums:.*lemmaId:')[0].replace('albums', '"albums"').replace(',lemmaId:','')
         album_info_dic = None
         try:
@@ -142,13 +165,16 @@ class CategorySpider(scrapy.Spider):
             album_info_dic = album_info_dic[0]
 
         pictures = []
+        cover_pics = []
         try:
             pictures.append(album_info_dic['pictures'])
+            cover_pics.append(album_info_dic['coverpic'])
         except KeyError, e:
             try:
                 for k,v in album_info_dic.items():
                   if v.has_key('pictures'):
                     pictures.append(v['pictures'])
+                    cover_pics.append(v['coverpic'])
             except Exception, e:
                 self.logger.error('parse pictures info error. url: %s, err: %r', 
                       response.url, e)
@@ -164,8 +190,16 @@ class CategorySpider(scrapy.Spider):
               try:
                 prefer_index = str(picture_info['type']['oriWithWater'])
                 image = picture_info['sizes'][prefer_index]
-                image_item['src'] = picture_info['src']
-                description = "desc:{%s}, owner: {%s}" % (picture_info['desc'].encode('utf8', 'ignore'), picture_info['owner'].encode('utf8', 'ignore'))
+                src = picture_info['src']
+                # src
+                image_item['src'] = src
+                # is_cover
+                if src in cover_pics:
+                    image_item['is_cover'] = True
+                else:
+                    image_item['is_cover'] = False
+                # desc
+                description = picture_info['desc'].encode('utf8', 'ignore')
                 image_item['desc'] = description
                 image_item['url'] = image['url']
                 image_item['width'] = image['width']
@@ -196,7 +230,15 @@ class CategorySpider(scrapy.Spider):
         file_name = response.url.split('/')[-1]
         path_part = os.path.join(file_name[0:2], file_name[2:4])
         image_dir = os.path.join('.', self.data_path, 'images', path_part)
+        file_path = os.path.join(image_dir, file_name)
 
+        # check file if exist
+        if os.path.isfile(file_path):
+            self.logger.warning("download_image() file exist. image_info: %r" , image_info)
+            return
+
+        # mime 
+        image_info['mime'] = response.headers['Content-Type']
         image_info['file_name'] = file_name
         image_info['file_path'] = os.path.join(path_part, file_name)
 
@@ -206,11 +248,13 @@ class CategorySpider(scrapy.Spider):
             raise
 
         try:
-          with open(os.path.join(image_dir, file_name), 'wb') as f:
+          with open(file_path, 'wb') as f:
             f.write(response.body)
         except Exception, err:
           this.logger.error("image file write error. file: %s, err: %r", file_name, err)
           raise
+
+        self.logger.info('Image saved to: %s', file_path)
 
         yield image_info
 

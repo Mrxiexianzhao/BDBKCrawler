@@ -13,32 +13,19 @@ class CategoryItem(scrapy.Item):
     name = scrapy.Field()
     count = scrapy.Field()
 
-    def to_dic(self):
-      d = {}
-      d['name'] = self['name']
-      d['count'] = self['count']
-      return d
-
-
 class PersonItem(scrapy.Item):
     name = scrapy.Field()
     url = scrapy.Field()
     tags = scrapy.Field()
     keywords = scrapy.Field()
     description = scrapy.Field()
-
-    def to_dic(self):
-      d = {}
-      d['name'] = self['name']
-      d['url'] = self['url']
-      d['tags'] = self['tags']
-      d['keywords'] = self['keywords']
-      d['description'] = self['description']
-      return d
+    summary_pic = scrapy.Field()
 
 class ImageItem(scrapy.Item):
     src = scrapy.Field()
     url = scrapy.Field()
+    is_cover = scrapy.Field()
+    mime = scrapy.Field()
     desc = scrapy.Field()
     width = scrapy.Field()
     height = scrapy.Field()
@@ -48,19 +35,3 @@ class ImageItem(scrapy.Item):
     person_id = scrapy.Field()
     person_name = scrapy.Field()
     person_url = scrapy.Field()
-
-    def to_dic(self):
-      d = {}
-      d['src'] = self['src']
-      d['url'] = self['url']
-      d['desc'] = self['desc']
-      d['width'] = self['width']
-      d['height'] = self['height']
-      d['size'] = self['size']
-      d['file_name'] = self['file_name']
-      d['file_path'] = self['file_path']
-#      d['person_id'] = self['person_id']
-      d['person_name'] = self['person_name']
-      d['person_url'] = self['person_url']
-      return d
-

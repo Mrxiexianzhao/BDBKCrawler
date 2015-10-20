@@ -18,20 +18,13 @@ NEWSPIDER_MODULE = 'bdbk.spiders'
 START_PAGE = 'http://baike.baidu.com/class/1408.html'
 DATA_PATH = "data"
 
-# mysql server
-DB_SERVER_HOST = '192.168.1.173'
-DB_SERVER_PORT = 13306
-DB_NAME = 'bdbk'
-DB_USER = 'root'
-DB_PASSWORD = 'User1234'
-
 # redis server
 REDIS_SERVER_HOST = '127.0.0.1'
 REDIS_SERVER_PORT = 6379
 
 #mongodb server
 MONGODB_URL = 'mongodb://127.0.0.1:8484'
-MONGODB_DB = 'bdbk'
+MONGODB_DB = 'bdbk_info'
 
 # Crawl responsibly by identifying yourself (and your website) on the user-agent
 #USER_AGENT = 'bdbk (+http://www.yourdomain.com)'
