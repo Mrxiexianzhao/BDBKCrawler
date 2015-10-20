@@ -11,12 +11,12 @@ import scrapy
 class CategoryItem(scrapy.Item):
     # define the fields for your item here like:
     name = scrapy.Field()
-    url = scrapy.Field()
+    count = scrapy.Field()
 
     def to_dic(self):
       d = {}
       d['name'] = self['name']
-      d['url'] = self['url']
+      d['count'] = self['count']
       return d
 
 

@@ -13,6 +13,8 @@ from bdbk.items import CategoryItem
 from bdbk.items import PersonItem
 from bdbk.items import ImageItem
 
+from bdbk.utils import mkdir
+
 # generic settings
 BAIDU_DOMAIN = ['baidu.com']
 
@@ -20,19 +22,18 @@ class CategorySpider(scrapy.Spider):
     name = 'bdbk.category'
     allowed_domains = BAIDU_DOMAIN
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, url=None, *args, **kwargs):
+        self.start_page = url
         super(CategorySpider, self).__init__(*args, **kwargs)
 
     def start_requests(self):
         # create dir
         self.data_path = os.path.join('.', self.settings["DATA_PATH"])
+
         try:
-            os.makedirs(self.data_path)
+            mkdir(self.data_path)
         except OSError, err:
-            if err.errno == errno.EEXIST and os.path.isdir(self.data_path):
-                pass
-            else:
-                raise
+            raise
         
         # redis client
         try:
@@ -42,23 +43,19 @@ class CategorySpider(scrapy.Spider):
         except redis.RedisError, err:
             raise err
 
-        yield scrapy.Request(self.settings['START_PAGE'], self.parse)
+        if self.start_page == None:
+            self.start_page = self.settings['START_PAGE']
+        yield scrapy.Request(self.start_page, self.parse)
 
     def parse(self, response):
-        categories_dic = []
         for sel in response.xpath('//a[contains(@href, "taglist")]'):
-            category_item = CategoryItem()
-            category_item['name'] = sel.xpath('text()').extract()[0].encode('utf-8', 'ignore')
-            category_item['url'] = response.urljoin(sel.xpath('@href').extract()[0])
-            categories_dic.append(category_item.to_dic())
+            url = response.urljoin(sel.xpath('@href').extract()[0])
             for i in range(0, 750 + 1, 10):
-                list_url = category_item['url'] + '&offset={0}'.format(i)
+                list_url = url + '&offset={0}'.format(i)
                 request = scrapy.Request(list_url, callback = self.parse_category_list)
-                request.meta['category_item'] = category_item
                 yield request
 
     def parse_category_list(self, response):
-        category_item = response.meta['category_item']
         for sel in response.xpath('//a[contains(@href, "/view/")]'):
             url = response.urljoin(sel.xpath('@href').extract()[0].split('?')[0])
             request = scrapy.Request(url, callback = self.parse_person)
@@ -204,12 +201,9 @@ class CategorySpider(scrapy.Spider):
         image_info['file_path'] = os.path.join(path_part, file_name)
 
         try:
-            os.makedirs(image_dir)
+            mkdir(image_dir)
         except OSError, err:
-            if err.errno == errno.EEXIST and os.path.isdir(image_dir):
-                pass
-            else:
-                raise
+            raise
 
         try:
           with open(os.path.join(image_dir, file_name), 'wb') as f:
