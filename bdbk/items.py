@@ -7,12 +7,6 @@
 
 import scrapy
 
-
-class CategoryItem(scrapy.Item):
-    # define the fields for your item here like:
-    name = scrapy.Field()
-    count = scrapy.Field()
-
 class PersonItem(scrapy.Item):
     name = scrapy.Field()
     url = scrapy.Field()

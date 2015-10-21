@@ -20,7 +20,6 @@ class StoreDBPipeline(object):
     def __init__(self, mongodb_url, mongodb_dbname):
         self.mongodb_url = mongodb_url
         self.mongodb_dbname = mongodb_dbname
-        self.categories = dict()
 
     @classmethod
     def from_crawler(cls, crawler):
@@ -35,7 +34,6 @@ class StoreDBPipeline(object):
         self.mongodb_db = self.mongodb_client[self.mongodb_dbname]
 
     def close_spider(self, spider):
-        self.mongodb_db[TBL_IMAGE_INFO].insert(self.categories)
         self.mongodb_client.close()
 
     def process_item(self, item, spider):

@@ -9,7 +9,6 @@ import traceback
 import scrapy
 import redis # https://github.com/andymccurdy/redis-py
 
-from bdbk.items import CategoryItem
 from bdbk.items import PersonItem
 from bdbk.items import ImageItem
 
@@ -24,9 +23,9 @@ class CategorySpider(scrapy.Spider):
 
     def __init__(self, url=None, *args, **kwargs):
         self.start_page = url
-        self.from_category = False
+        self.follow_link= False
         if self.start_page == None:
-            self.from_category = True
+            self.follow_link = True
         super(CategorySpider, self).__init__(*args, **kwargs)
 
     def start_requests(self):
@@ -106,26 +105,39 @@ class CategorySpider(scrapy.Spider):
 
         description = response.xpath('//meta[@name="description"]/@content').extract()[0].encode('utf-8', 'ignore')
 
+        # get person tags (人物标签)
+        person_tags = list()
+        categories = dict()
+        is_person = False
+        for sel in response.xpath('//span[@class="taglist"]'):
+            tag = sel.xpath('text()').extract()[0].replace('\n', '').encode('utf-8', 'ignore')
+            if tag.find('人物') != -1:
+                is_person = True
+            person_tags.append(tag)
+            # save to redis
+            category_cnt = self.redis_client.get(tag)
+            if category_cnt != None:
+                category_cnt = int(category_cnt) + 1
+            else:
+                category_cnt = 1
+            self.redis_client.set(tag, category_cnt)
+
+            categories[tag] = category_cnt
+
+        # if tags do not contains |人物|, just follow link
+        if is_person == False and self.follow_link == True:
+            # follow link that which url contains |view|(view/subview)
+            for sel in response.xpath('//a[contains(@href, "view")]'):
+                url = response.urljoin(sel.xpath('@href').extract()[0].split('?')[0])
+                request = scrapy.Request(url, callback = self.parse_person)
+                yield request
+            return
+
         person_item = PersonItem()
         person_item['name'] = response.xpath('//h1/text()').extract()[0].encode('utf-8', 'ignore')
         person_item['url'] = url
         person_item['keywords'] = keywords
         person_item['description'] = description
-
-        # get person tags (人物标签)
-        person_tags = list()
-        categories = dict()
-        for sel in response.xpath('//span[@class="taglist"]'):
-          tag = sel.xpath('text()').extract()[0].replace('\n', '').encode('utf-8', 'ignore')
-          person_tags.append(tag)
-          category_cnt = self.redis_client.get(tag)
-          if category_cnt != None:
-              category_cnt = int(category_cnt) + 1
-          else:
-              category_cnt = 1
-          self.redis_client.set(tag, category_cnt)
-
-          categories[tag] = category_cnt
 
         person_item['tags'] = ' '.join(person_tags)
 
@@ -147,6 +159,9 @@ class CategorySpider(scrapy.Spider):
             request = scrapy.Request(image_gallery_url, callback = self.parse_image_gallery)
             request.meta["person_info"] = person_item
             yield request
+
+        if self.follow_link == False:
+            return
 
         # follow link that which url contains |view|(view/subview)
         for sel in response.xpath('//a[contains(@href, "view")]'):
