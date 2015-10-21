@@ -24,7 +24,7 @@ REDIS_SERVER_PORT = 6379
 
 #mongodb server
 MONGODB_URL = 'mongodb://127.0.0.1:8484'
-MONGODB_DB = 'bdbk_info'
+MONGODB_DB = 'bdbk_person'
 
 # Crawl responsibly by identifying yourself (and your website) on the user-agent
 #USER_AGENT = 'bdbk (+http://www.yourdomain.com)'
