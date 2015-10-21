@@ -172,7 +172,16 @@ class CategorySpider(scrapy.Spider):
     def parse_image_gallery(self, response):
         person_info = response.meta['person_info']
         self.logger.info('Found Photo Gallery from : %s', response.url)
-        album_info_str = "{%s}" % response.xpath('//body/script/text()').re(r'albums:.*lemmaId:')[0].replace('albums', '"albums"').replace(',lemmaId:','')
+        album_info_str  = None
+        try:
+            album_info_str = "{%s}" % response.xpath('//body/script/text()').re(r'albums:.*lemmaId:')[0].replace('albums', '"albums"').replace(',lemmaId:','')
+        except Exception, e:
+            self.logger.error('json parse album info error. url: %s, err: %r', response.url, e)
+            return
+        if album_info_str == None:
+            self.logger.warning('album not found. url: %s', response.url)
+            return
+
         album_info_dic = None
         try:
             album_info_dic = json.loads(album_info_str)
