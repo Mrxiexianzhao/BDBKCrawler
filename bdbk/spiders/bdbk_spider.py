@@ -174,7 +174,9 @@ class CategorySpider(scrapy.Spider):
         self.logger.info('Found Photo Gallery from : %s', response.url)
         album_info_str  = None
         try:
-            album_info_str = "{%s}" % response.xpath('//body/script/text()').re(r'albums:.*lemmaId:')[0].replace('albums', '"albums"').replace(',lemmaId:','')
+            album_info_str = response.xpath('//script/text()').re(r'albums:.*,[\r\n\s]*lemmaId:')[0]
+            album_info_str = re.sub(r',[\r\n\s]*lemmaId:', '', album_info_str)
+            album_info_str = "{%s}" % album_info_str.replace('albums', '"albums"')
         except Exception, e:
             self.logger.error('json parse album info error. url: %s, err: %r', response.url, e)
             return
