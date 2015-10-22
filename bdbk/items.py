@@ -19,6 +19,7 @@ class ImageItem(scrapy.Item):
     src = scrapy.Field()
     url = scrapy.Field()
     is_cover = scrapy.Field()
+    album_url = scrapy.Field()
     mime = scrapy.Field()
     desc = scrapy.Field()
     width = scrapy.Field()

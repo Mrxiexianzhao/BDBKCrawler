@@ -110,7 +110,10 @@ class CategorySpider(scrapy.Spider):
         categories = dict()
         is_person = False
         for sel in response.xpath('//span[@class="taglist"]'):
-            tag = sel.xpath('text()').extract()[0].replace('\n', '').encode('utf-8', 'ignore')
+            tag = sel.xpath('text()').extract()[0]
+            tag = re.sub(r'[\r\n]*', '', tag).encode('utf-8', 'ignore')
+            if len(tag) == 0:
+                continue
             if tag.find('人物') != -1:
                 is_person = True
             person_tags.append(tag)
@@ -153,13 +156,6 @@ class CategorySpider(scrapy.Spider):
         yield categories
 
         # crawling image gallery (图册)
-        # for url in response.xpath('//div[@class="summary-pic"]/a/@href').extract()
-        for url in response.xpath('//a[contains(@href, "/picture/")]/@href').extract():
-            image_gallery_url = response.urljoin(url.split('?')[0])
-            request = scrapy.Request(image_gallery_url, callback = self.parse_image_gallery)
-            request.meta["person_info"] = person_item
-            yield request
-
         # album list
         album_list = response.xpath('//script/text()').re(r'AlbumList\({.*[\n\t]*.*[\n\t]*.*[\n\t]*.*')
         albums = list()
@@ -189,6 +185,15 @@ class CategorySpider(scrapy.Spider):
         for album_url in albums:
             request = scrapy.Request(album_url, callback = self.parse_image_gallery)
             request.meta["person_info"] = person_item
+            request.meta["from_url"] = album_url
+            yield request
+
+        # for url in response.xpath('//div[@class="summary-pic"]/a/@href').extract()
+        for url in response.xpath('//a[contains(@href, "/picture/")]/@href').extract():
+            image_gallery_url = response.urljoin(url.split('?')[0])
+            request = scrapy.Request(image_gallery_url, callback = self.parse_image_gallery)
+            request.meta["person_info"] = person_item
+            request.meta["from_url"] = image_gallery_url
             yield request
 
         if self.follow_link == False:
@@ -205,11 +210,16 @@ class CategorySpider(scrapy.Spider):
         self.logger.info('Found Photo Gallery from : %s', response.url)
         album_info_str  = None
         try:
-            album_info_str = response.xpath('//script/text()').re(r'albums:.*,[\r\n\s]*lemmaId:')[0]
-            album_info_str = re.sub(r',[\r\n\s]*lemmaId:', '', album_info_str)
-            album_info_str = "{%s}" % album_info_str.replace('albums', '"albums"')
+            r = re.compile('albums:.*,[\r\n\s]*lemmaId:')
+            for s in response.xpath('//script/text()').extract():
+                match = re.search(r, s)
+                if match:
+                    album_info_str =  match.group()
+                    album_info_str = re.sub(r',[\r\n\s]*lemmaId:', '', album_info_str)
+                    album_info_str = "{%s}" % album_info_str.replace('albums', '"albums"')
+                    break
         except Exception, e:
-            self.logger.error('json parse album info error. url: %s, err: %r', response.url, e)
+            self.logger.error('get album info json error. url: %s, err: %r', response.url, e)
             return
         if album_info_str == None:
             self.logger.warning('album not found. url: %s', response.url)
@@ -220,7 +230,7 @@ class CategorySpider(scrapy.Spider):
             album_info_dic = json.loads(album_info_str)
             album_info_dic = album_info_dic['albums']
         except Exception, e:
-            self.logger.error('json parse album info error. url: %s, err: %r', response.url, e)
+            self.logger.error('json loads album info error. url: %s, json: %s, err: %r', response.url, album_info_str, e)
             return
         if isinstance(album_info_dic, list):
             album_info_dic = album_info_dic[0]
@@ -248,6 +258,7 @@ class CategorySpider(scrapy.Spider):
         for p in pictures:
             for picture_info in p:
               image_item = ImageItem()
+              image_item['album_url'] = response.meta["from_url"]
               try:
                 prefer_index = str(picture_info['type']['oriWithWater'])
                 image = picture_info['sizes'][prefer_index]
@@ -288,7 +299,15 @@ class CategorySpider(scrapy.Spider):
 
     def download_image(self, response):
         image_info = response.meta['image_info']
-        file_name = response.url.split('/')[-1]
+        # mime 
+        mime = response.headers['Content-Type']
+        image_info['mime'] = mime
+
+        # file_name
+        file_name =response.url.split('/')[-1]
+        if mime != 'image/jpeg':
+            file_name = '{0}.{1}'.format(file_name.split('.')[0], mime.split('/')[-1])
+
         path_part = os.path.join(file_name[0:2], file_name[2:4])
         image_dir = os.path.join(self.data_path, 'images', path_part)
         file_path = os.path.join(image_dir, file_name)
@@ -298,8 +317,6 @@ class CategorySpider(scrapy.Spider):
             self.logger.warning("download_image() file exist. image_info: %r" , image_info)
             return
 
-        # mime 
-        image_info['mime'] = response.headers['Content-Type']
         image_info['file_name'] = file_name
         image_info['file_path'] = os.path.join(path_part, file_name)
 
