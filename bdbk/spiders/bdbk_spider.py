@@ -160,6 +160,31 @@ class CategorySpider(scrapy.Spider):
             request.meta["person_info"] = person_item
             yield request
 
+        # album list
+        album_list = response.xpath('//script/text()').re(r'AlbumList\({.*[\n\t]*.*[\n\t]*.*[\n\t]*.*')
+        albums = list()
+        if len(album_list) > 0:
+            album_list = album_list[0]
+            album_list = re.sub(r'[\r\n\t]*', '', album_list)
+            album_lemma_id = re.findall(r'lemmaId:"([\d]+)"', album_list)[0]
+            album_sublemma_id = re.findall(r'subLemmaId:"([\d]+)"', album_list)[0]
+            album_data_json = re.sub(r'AlbumList.*data:', '', album_list)
+            try:
+                album_data_dict = json.loads(album_data_json)
+                for d in album_data_dict:
+                    cover_pic = album_data_dict[d]["coverpic"]
+                    album_url = '/picture/{0}/{1}/{2}/{3}'.format(album_lemma_id, album_sublemma_id, d, cover_pic)
+                    album_url = response.urljoin(album_url)
+                    self.logger.info('Found album. url: %s', album_url)
+                    albums.append(album_url)
+            except Exception, e:
+                self.logger.error('json parse album list info error. url: %s, err: %r', response.url, e)
+
+        for album_url in albums:
+            request = scrapy.Request(album_url, callback = self.parse_image_gallery)
+            request.meta["person_info"] = person_item
+            yield request
+
         if self.follow_link == False:
             return
 
