@@ -171,9 +171,15 @@ class CategorySpider(scrapy.Spider):
             album_data_json = re.sub(r'AlbumList.*data:', '', album_list)
             try:
                 album_data_dict = json.loads(album_data_json)
+                i = 0
                 for d in album_data_dict:
-                    cover_pic = album_data_dict[d]["coverpic"]
-                    album_url = '/picture/{0}/{1}/{2}/{3}'.format(album_lemma_id, album_sublemma_id, d, cover_pic)
+                    if isinstance(album_data_dict, list):
+                        cover_pic = d["coverpic"]
+                        album_url = '/picture/{0}/{1}/{2}/{3}'.format(album_lemma_id, album_sublemma_id, i, cover_pic)
+                        i += 1
+                    else:
+                        cover_pic = album_data_dict[d]["coverpic"]
+                        album_url = '/picture/{0}/{1}/{2}/{3}'.format(album_lemma_id, album_sublemma_id, d, cover_pic)
                     album_url = response.urljoin(album_url)
                     self.logger.info('Found album. url: %s', album_url)
                     albums.append(album_url)
