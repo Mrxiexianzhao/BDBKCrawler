@@ -259,7 +259,7 @@ class CategorySpider(scrapy.Spider):
         image_info = response.meta['image_info']
         file_name = response.url.split('/')[-1]
         path_part = os.path.join(file_name[0:2], file_name[2:4])
-        image_dir = os.path.join('.', self.data_path, 'images', path_part)
+        image_dir = os.path.join(self.data_path, 'images', path_part)
         file_path = os.path.join(image_dir, file_name)
 
         # check file if exist
