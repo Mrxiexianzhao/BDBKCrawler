@@ -334,6 +334,7 @@ class CategorySpider(scrapy.Spider):
             album_item = AlbumItem()
             album_item['url'] = response.url
             album_item['description'] = descriptions[0]
+            album_item['total'] = len(pictures)
             album_item['cover_pic'] = cover_pics[0]
             album_item['person_name'] = person_info['name']
             album_item['person_url'] = person_info['url']
