@@ -43,8 +43,13 @@ class CategorySpider(scrapy.Spider):
         
         # redis client
         try:
-            self.redis_client = redis.Redis(host=self.settings["REDIS_SERVER_HOST"], port=self.settings["REDIS_SERVER_PORT"], db=0)
+            redis_server_host = self.settings["REDIS_SERVER_HOST"]
+            redis_server_port = int(self.settings["REDIS_SERVER_PORT"])
+            redis_server_db = int(self.settings['REDIS_SERVER_DB'])
+            self.redis_client = redis.Redis(host=redis_server_host, port=redis_server_port, db=redis_server_db)
             self.redis_client.flushdb()
+
+            self.logger.info('Redis server flushed. server addr: {0}:{1}/{2}'.format(redis_server_host,redis_server_port, redis_server_db))
 
         except redis.RedisError, err:
             raise err
