@@ -15,6 +15,14 @@ class PersonItem(scrapy.Item):
     description = scrapy.Field()
     summary_pic = scrapy.Field()
 
+class AlbumItem(scrapy.Item):
+    url = scrapy.Field()
+    description = scrapy.Field()
+    total = scrapy.Field()
+    cover_pic = scrapy.Field()
+    person_name = scrapy.Field()
+    person_url = scrapy.Field()
+
 class ImageItem(scrapy.Item):
     src = scrapy.Field()
     url = scrapy.Field()
@@ -30,3 +38,10 @@ class ImageItem(scrapy.Item):
     person_id = scrapy.Field()
     person_name = scrapy.Field()
     person_url = scrapy.Field()
+
+class ErrorInfoItem(scrapy.Item):
+    time = scrapy.Field()
+    url = scrapy.Field()
+    error_level = scrapy.Field()
+    error_type = scrapy.Field()
+    description = scrapy.Field()

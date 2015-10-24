@@ -10,9 +10,12 @@ import scrapy
 import redis # https://github.com/andymccurdy/redis-py
 
 from bdbk.items import PersonItem
+from bdbk.items import AlbumItem
 from bdbk.items import ImageItem
+from bdbk.items import ErrorInfoItem
 
 from bdbk.utils import mkdir
+from bdbk.utils import now_string
 
 # generic settings
 BAIDU_DOMAIN = ['baidu.com']
@@ -31,6 +34,7 @@ class CategorySpider(scrapy.Spider):
     def start_requests(self):
         # create dir
         self.data_path = os.path.join('.', self.settings["DATA_PATH"])
+        self.ignore_tags = self.settings['IGNORE_TAGS']
 
         try:
             mkdir(self.data_path)
@@ -105,6 +109,8 @@ class CategorySpider(scrapy.Spider):
 
         description = response.xpath('//meta[@name="description"]/@content').extract()[0].encode('utf-8', 'ignore')
 
+        page_title = response.xpath('//h1/text()').extract()[0].encode('utf-8', 'ignore')
+
         # get person tags (人物标签)
         person_tags = list()
         categories = dict()
@@ -114,6 +120,17 @@ class CategorySpider(scrapy.Spider):
             tag = re.sub(r'[\r\n]*', '', tag).encode('utf-8', 'ignore')
             if len(tag) == 0:
                 continue
+            if tag in self.ignore_tags:
+                message = 'In ignore list. name: {0}, tag: {1}'.format(page_title, tag)
+                ei_item = ErrorInfoItem()
+                ei_item['time'] = now_string()
+                ei_item['url'] = url
+                ei_item['error_level'] = "W"
+                ei_item['error_type'] = 'W1'
+                ei_item['description'] = message
+                yield ei_item
+                self.logger.warning(message)
+                return
             if tag.find('人物') != -1:
                 is_person = True
             person_tags.append(tag)
@@ -137,7 +154,7 @@ class CategorySpider(scrapy.Spider):
             return
 
         person_item = PersonItem()
-        person_item['name'] = response.xpath('//h1/text()').extract()[0].encode('utf-8', 'ignore')
+        person_item['name'] = page_title
         person_item['url'] = url
         person_item['keywords'] = keywords
         person_item['description'] = description
@@ -171,18 +188,33 @@ class CategorySpider(scrapy.Spider):
                 for d in album_data_dict:
                     if isinstance(album_data_dict, list):
                         cover_pic = d["coverpic"]
+                        album_desc= d["desc"]
+                        album_total= d["total"]
                         album_url = '/picture/{0}/{1}/{2}/{3}'.format(album_lemma_id, album_sublemma_id, i, cover_pic)
                         i += 1
                     else:
                         cover_pic = album_data_dict[d]["coverpic"]
+                        album_desc= album_data_dict[d]["desc"]
+                        album_total= album_data_dict[d]["total"]
                         album_url = '/picture/{0}/{1}/{2}/{3}'.format(album_lemma_id, album_sublemma_id, d, cover_pic)
                     album_url = response.urljoin(album_url)
-                    self.logger.info('Found album. url: %s', album_url)
-                    albums.append(album_url)
+
+                    # build album_item
+                    album_item = AlbumItem()
+                    album_item['url'] = album_url
+                    album_item['description'] = album_desc.encode('utf8', 'ignore')
+                    album_item['total'] = album_total
+                    album_item['cover_pic'] = cover_pic
+                    album_item['person_name'] = person_item['name']
+                    album_item['person_url'] = person_item['url']
+                    albums.append(album_item)
             except Exception, e:
                 self.logger.error('json parse album list info error. url: %s, err: %r', response.url, e)
 
-        for album_url in albums:
+        for album_item in albums:
+            album_url = album_item['url']
+            yield album_item
+            self.logger.info('Found album for person %s. desc: %s, url: %s', album_item['person_name'], album_item['description'], album_url)
             request = scrapy.Request(album_url, callback = self.parse_image_gallery)
             request.meta["person_info"] = person_item
             request.meta["from_url"] = album_url
@@ -222,7 +254,15 @@ class CategorySpider(scrapy.Spider):
             self.logger.error('get album info json error. url: %s, err: %r', response.url, e)
             return
         if album_info_str == None:
-            self.logger.warning('album not found. url: %s', response.url)
+            message = 'Album not found. person_name: {0}, person_url: {1}'.format(person_info['name'], person_info['url'])
+            ei_item = ErrorInfoItem()
+            ei_item['time'] = now_string()
+            ei_item['url'] = response.url
+            ei_item['error_level'] = "E"
+            ei_item['error_type'] = "E1"
+            ei_item['description'] = message
+            yield ei_item
+            self.logger.warning('{%s}. url: %s', message, response.url)
             return
 
         album_info_dic = None
@@ -230,7 +270,15 @@ class CategorySpider(scrapy.Spider):
             album_info_dic = json.loads(album_info_str)
             album_info_dic = album_info_dic['albums']
         except Exception, e:
-            self.logger.error('json loads album info error. url: %s, json: %s, err: %r', response.url, album_info_str, e)
+            message = 'json.loads album info error. url: {0}, json: {1}, err: {2}'.format(response.url, album_info_str, e)
+            ei_item = ErrorInfoItem()
+            ei_item['time'] = now_string()
+            ei_item['url'] = response.url
+            ei_item['error_level'] = "E"
+            ei_item['error_type'] = "E2"
+            ei_item['description'] = message
+            yield ei_item
+            self.logger.error(message)
             return
         if isinstance(album_info_dic, list):
             album_info_dic = album_info_dic[0]
@@ -247,12 +295,26 @@ class CategorySpider(scrapy.Spider):
                     pictures.append(v['pictures'])
                     cover_pics.append(v['coverpic'])
             except Exception, e:
-                self.logger.error('parse pictures info error. url: %s, err: %r', 
-                      response.url, e)
+                message = 'parse pictures info error. url: {0}, err: {1}'.format(response.url, e)
+                ei_item = ErrorInfoItem()
+                ei_item['time'] = now_string()
+                ei_item['url'] = response.url
+                ei_item['error_level'] = "E"
+                ei_item['error_type'] = "E3"
+                ei_item['description'] = message
+                yield ei_item
+                self.logger.error(message)
                 return
         except Exception, e:
-            self.logger.error('parse pictures info error. url: %s, err: %r', 
-                response.url, e)
+            message = 'parse pictures info error. url: {0}, err: {1}'.format(response.url, e)
+            ei_item = ErrorInfoItem()
+            ei_item['time'] = now_string()
+            ei_item['url'] = response.url
+            ei_item['error_level'] = "E"
+            ei_item['error_type'] = "E3"
+            ei_item['description'] = message
+            yield ei_item
+            self.logger.error(message)
             return
 
         for p in pictures:
@@ -280,17 +342,24 @@ class CategorySpider(scrapy.Spider):
                 image_item['person_name'] = person_info['name']
                 image_item['person_url'] = person_info['url']
               except Exception, e:
-                self.logger.error('parse pictures info error. picture: %r, err: %r \n TRACE: %s', 
-                  picture_info, e, traceback.format_exc())
+                message = 'parse pictures info error. url: {0}, err: {1} picture: {2}.'.format(response.url, e, picture_info)
+                ei_item = ErrorInfoItem()
+                ei_item['time'] = now_string()
+                ei_item['url'] = response.url
+                ei_item['error_level'] = "E"
+                ei_item['error_type'] = "E4"
+                ei_item['description'] = message
+                yield ei_item
+                self.logger.error(message)
                 continue
 
+              # set |src| to redis as crawled mark
               src = image_item['src']
               scann_cnt = self.redis_client.get(src)
               if scann_cnt != None:
-                scann_cnt = int(scann_cnt) + 1
-                self.redis_client.set(src, scann_cnt)
-                continue 
-
+                  scann_cnt = int(scann_cnt) + 1
+                  self.redis_client.set(src, scann_cnt)
+                  continue 
               self.redis_client.set(src, 1)
 
               request = scrapy.Request(image_item['url'], callback = self.download_image)

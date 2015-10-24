@@ -9,12 +9,16 @@ import os
 
 from bdbk.items import PersonItem
 from bdbk.items import ImageItem
+from bdbk.items import AlbumItem
+from bdbk.items import ErrorInfoItem
 
 import pymongo
 
 TBL_CATEGORY_INFO = 'category_info'
 TBL_PERSION_INFO = 'person_info'
 TBL_IMAGE_INFO = 'image_info'
+TBL_ALBUM_INFO = 'album_info'
+TBL_ERROR_INFO = 'error_info'
 
 class StoreDBPipeline(object):
     def __init__(self, mongodb_url, mongodb_dbname):
@@ -37,10 +41,12 @@ class StoreDBPipeline(object):
         self.mongodb_client.close()
 
     def process_item(self, item, spider):
-        if isinstance(item, PersonItem):
-            self.mongodb_db[TBL_PERSION_INFO].insert(dict(item))
-        elif isinstance(item, ImageItem):
+        if isinstance(item, ImageItem):
             self.mongodb_db[TBL_IMAGE_INFO].insert(dict(item))
+        elif isinstance(item, AlbumItem):
+            self.mongodb_db[TBL_ALBUM_INFO].insert(dict(item))
+        elif isinstance(item, PersonItem):
+            self.mongodb_db[TBL_PERSION_INFO].insert(dict(item))
         elif isinstance(item, dict):
             category_doc = self.mongodb_db[TBL_CATEGORY_INFO]
             for k,v in item.items():
@@ -49,3 +55,5 @@ class StoreDBPipeline(object):
                   category_doc.insert_one({'name': k, 'count': v})
                 else:
                   category_doc.update_one({'name': k}, {'$set': {'count':v}})
+        elif isinstance(item, ErrorInfoItem):
+            self.mongodb_db[TBL_ERROR_INFO].insert(dict(item))

@@ -16,6 +16,22 @@ NEWSPIDER_MODULE = 'bdbk.spiders'
 
 # generic settings
 START_PAGE = 'http://baike.baidu.com/class/1408.html'
+IGNORE_TAGS = [
+'虚拟人物', 
+'虚拟角色',
+'文学形象',
+'动漫人物',
+'动漫形象',
+'动漫角色',
+'漫画人物',
+'游戏形象',
+'游戏人物',
+'游戏角色',
+'神话人物',
+'神话形象'
+]
+
+# fetched data store path
 DATA_PATH = "data"
 
 # redis server
@@ -24,7 +40,7 @@ REDIS_SERVER_PORT = 6379
 
 #mongodb server
 MONGODB_URL = 'mongodb://127.0.0.1:8484'
-MONGODB_DB = 'bdbk_person'
+MONGODB_DB = 'bdbk'
 
 # Crawl responsibly by identifying yourself (and your website) on the user-agent
 #USER_AGENT = 'bdbk (+http://www.yourdomain.com)'
@@ -66,9 +82,9 @@ MONGODB_DB = 'bdbk_person'
 
 # Enable or disable extensions
 # See http://scrapy.readthedocs.org/en/latest/topics/extensions.html
-#EXTENSIONS = {
-#    'scrapy.telnet.TelnetConsole': None,
-#}
+EXTENSIONS = {
+    'bdbk.extensions.BDBKErrorStore': 200,
+}
 
 # Configure item pipelines
 # See http://scrapy.readthedocs.org/en/latest/topics/item-pipeline.html
