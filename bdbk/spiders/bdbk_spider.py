@@ -221,24 +221,17 @@ class CategorySpider(scrapy.Spider):
             self.logger.info('Found album for person %s. desc: %s, url: %s', album_item['person_name'], album_item['description'], album_url)
             request = scrapy.Request(album_url, callback = self.parse_image_gallery)
             request.meta["person_info"] = person_item
+            request.meta["album_info"] = album_item
             request.meta["from_url"] = album_url
             yield request
 
         # if albums is 0 length, follow link contains |picture|
         if len(albums) == 0:
-            message = 'No |AlbumList| part, follow link contains |picture|. name: {0}, url: {1}'.format(person_item['name'], url)
-            ei_item = ErrorInfoItem()
-            ei_item['time'] = now_string()
-            ei_item['url'] = url
-            ei_item['error_level'] = "W"
-            ei_item['error_type'] = "W2"
-            ei_item['description'] = message
-            yield ei_item
-            self.logger.warning(message)
             for url in response.xpath('//a[contains(@href, "/picture/")]/@href').extract():
                 image_gallery_url = response.urljoin(url.split('?')[0])
                 request = scrapy.Request(image_gallery_url, callback = self.parse_image_gallery)
                 request.meta["person_info"] = person_item
+                request.meta["album_info"] = None
                 request.meta["from_url"] = image_gallery_url
                 yield request
 
@@ -253,6 +246,7 @@ class CategorySpider(scrapy.Spider):
 
     def parse_image_gallery(self, response):
         person_info = response.meta['person_info']
+        album_info = response.meta['album_info']
         self.logger.info('Found Photo Gallery from : %s', response.url)
         album_info_str  = None
         try:
@@ -299,15 +293,20 @@ class CategorySpider(scrapy.Spider):
 
         pictures = []
         cover_pics = []
+        descriptions = []
         try:
             pictures.append(album_info_dic['pictures'])
-            cover_pics.append(album_info_dic['coverpic'])
+            if album_info == None:
+                cover_pics.append(album_info_dic['coverpic'])
+                descriptions.append(album_info_dic['desc'])
         except KeyError, e:
             try:
                 for k,v in album_info_dic.items():
-                  if v.has_key('pictures'):
-                    pictures.append(v['pictures'])
-                    cover_pics.append(v['coverpic'])
+                    if v.has_key('pictures'):
+                        pictures.append(v['pictures'])
+                        if album_info == None:
+                            cover_pics.append(v['coverpic'])
+                            descriptions.append(v['desc'])
             except Exception, e:
                 message = 'parse pictures info error. url: {0}, err: {1}'.format(response.url, e)
                 ei_item = ErrorInfoItem()
@@ -330,6 +329,15 @@ class CategorySpider(scrapy.Spider):
             yield ei_item
             self.logger.error(message)
             return
+
+        if album_info == None and len(cover_pics) == 1:
+            album_item = AlbumItem()
+            album_item['url'] = response.url
+            album_item['description'] = descriptions[0]
+            album_item['cover_pic'] = cover_pics[0]
+            album_item['person_name'] = person_info['name']
+            album_item['person_url'] = person_info['url']
+            yield album_item
 
         for p in pictures:
             for picture_info in p:
@@ -391,7 +399,7 @@ class CategorySpider(scrapy.Spider):
         if mime != 'image/jpeg':
             file_name = '{0}.{1}'.format(file_name.split('.')[0], mime.split('/')[-1])
 
-        path_part = os.path.join(file_name[0:2], file_name[2:4])
+        path_part = os.path.join(file_name[0:3], file_name[3:9], file_name[10:12], file_name[12:14])
         image_dir = os.path.join(self.data_path, 'images', path_part)
         file_path = os.path.join(image_dir, file_name)
 
@@ -412,7 +420,7 @@ class CategorySpider(scrapy.Spider):
           with open(file_path, 'wb') as f:
             f.write(response.body)
         except Exception, err:
-          this.logger.error("image file write error. file: %s, err: %r", file_name, err)
+          self.logger.error("image file write error. file: %s, err: %r", file_name, err)
           raise
 
         self.logger.info('Image saved to: %s', file_path)
