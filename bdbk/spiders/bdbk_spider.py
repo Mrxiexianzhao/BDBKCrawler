@@ -158,7 +158,6 @@ class CategorySpider(scrapy.Spider):
         person_item['url'] = url
         person_item['keywords'] = keywords
         person_item['description'] = description
-
         person_item['tags'] = ' '.join(person_tags)
 
         summary_pic = response.xpath('//div[@class="summary-pic"]/a/img/@src').extract()
@@ -220,13 +219,23 @@ class CategorySpider(scrapy.Spider):
             request.meta["from_url"] = album_url
             yield request
 
-        # for url in response.xpath('//div[@class="summary-pic"]/a/@href').extract()
-        for url in response.xpath('//a[contains(@href, "/picture/")]/@href').extract():
-            image_gallery_url = response.urljoin(url.split('?')[0])
-            request = scrapy.Request(image_gallery_url, callback = self.parse_image_gallery)
-            request.meta["person_info"] = person_item
-            request.meta["from_url"] = image_gallery_url
-            yield request
+        # if albums is 0 length, follow link contains |picture|
+        if len(albums) == 0:
+            message = 'No |AlbumList| part, follow link contains |picture|. name: {0}, url: {1}'.format(person_item['name'], url)
+            ei_item = ErrorInfoItem()
+            ei_item['time'] = now_string()
+            ei_item['url'] = url
+            ei_item['error_level'] = "W"
+            ei_item['error_type'] = "W2"
+            ei_item['description'] = message
+            yield ei_item
+            self.logger.warning(message)
+            for url in response.xpath('//a[contains(@href, "/picture/")]/@href').extract():
+                image_gallery_url = response.urljoin(url.split('?')[0])
+                request = scrapy.Request(image_gallery_url, callback = self.parse_image_gallery)
+                request.meta["person_info"] = person_item
+                request.meta["from_url"] = image_gallery_url
+                yield request
 
         if self.follow_link == False:
             return
