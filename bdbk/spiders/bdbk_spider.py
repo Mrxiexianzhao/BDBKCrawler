@@ -394,10 +394,9 @@ class CategorySpider(scrapy.Spider):
 
         # file_name
         file_name = response.url.split('/')[-1]
-        file_name_base = file_name.split('.')[0]
         if mime != 'image/jpeg':
-            file_name = '{0}.{1}'.format(file_name_base, mime.split('/')[-1])
-        path_part = os.path.join(file_name_base[0:2], file_name_base[2:4], file_name_base[-2:])
+            file_name = '{0}.{1}'.format(file_name.split('.')[0], mime.split('/')[-1])
+        path_part = os.path.join(file_name[0:2], file_name[16:18])
         image_dir = os.path.join(self.data_path, 'images', path_part)
         file_path = os.path.join(image_dir, file_name)
 
