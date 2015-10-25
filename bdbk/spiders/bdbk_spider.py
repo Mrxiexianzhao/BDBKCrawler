@@ -163,7 +163,7 @@ class CategorySpider(scrapy.Spider):
         person_item['url'] = url
         person_item['keywords'] = keywords
         person_item['description'] = description
-        person_item['tags'] = ' '.join(person_tags)
+        person_item['tags'] = person_tags
 
         summary_pic = response.xpath('//div[@class="summary-pic"]/a/img/@src').extract()
         if len(summary_pic) > 0:
@@ -331,14 +331,14 @@ class CategorySpider(scrapy.Spider):
             return
 
         if album_info == None and len(cover_pics) == 1:
-            album_item = AlbumItem()
-            album_item['url'] = response.url
-            album_item['description'] = descriptions[0]
-            album_item['total'] = len(pictures)
-            album_item['cover_pic'] = cover_pics[0]
-            album_item['person_name'] = person_info['name']
-            album_item['person_url'] = person_info['url']
-            yield album_item
+            album_info = AlbumItem()
+            album_info['url'] = response.url
+            album_info['description'] = descriptions[0]
+            album_info['total'] = len(pictures)
+            album_info['cover_pic'] = cover_pics[0]
+            album_info['person_name'] = person_info['name']
+            album_info['person_url'] = person_info['url']
+            yield album_info
 
         for p in pictures:
             for picture_info in p:
@@ -351,10 +351,7 @@ class CategorySpider(scrapy.Spider):
                 # src
                 image_item['src'] = src
                 # is_cover
-                if src in cover_pics:
-                    image_item['is_cover'] = True
-                else:
-                    image_item['is_cover'] = False
+                image_item['is_cover'] = (src == album_info['cover_pic'])
                 # desc
                 description = picture_info['desc'].encode('utf8', 'ignore')
                 image_item['desc'] = description
@@ -396,11 +393,11 @@ class CategorySpider(scrapy.Spider):
         image_info['mime'] = mime
 
         # file_name
-        file_name =response.url.split('/')[-1]
+        file_name = response.url.split('/')[-1]
+        file_name_base = file_name.split('.')[0]
         if mime != 'image/jpeg':
-            file_name = '{0}.{1}'.format(file_name.split('.')[0], mime.split('/')[-1])
-
-        path_part = os.path.join(file_name[-1:-3], file_name[-3:-5])
+            file_name = '{0}.{1}'.format(file_name_base, mime.split('/')[-1])
+        path_part = os.path.join(file_name_base[0:2], file_name_base[2:4], file_name_base[-2:])
         image_dir = os.path.join(self.data_path, 'images', path_part)
         file_path = os.path.join(image_dir, file_name)
 
