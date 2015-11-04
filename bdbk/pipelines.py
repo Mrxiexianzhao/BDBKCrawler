@@ -11,11 +11,10 @@ from bdbk.items import PersonItem
 from bdbk.items import ImageItem
 from bdbk.items import AlbumItem
 from bdbk.items import ErrorInfoItem
-
 import pymongo
 
 TBL_CATEGORY_INFO = 'category_info'
-TBL_PERSION_INFO = 'person_info'
+TBL_PERSON_INFO = 'person_info'
 TBL_IMAGE_INFO = 'image_info'
 TBL_ALBUM_INFO = 'album_info'
 TBL_ERROR_INFO = 'error_info'
@@ -36,17 +35,21 @@ class StoreDBPipeline(object):
         settings = spider.settings
         self.mongodb_client = pymongo.MongoClient(self.mongodb_url)
         self.mongodb_db = self.mongodb_client[self.mongodb_dbname]
+        self.person_info_collection = self.mongodb_db[TBL_PERSON_INFO]
+        self.image_info_collection = self.mongodb_db[TBL_IMAGE_INFO]
+        self.album_info_collection = self.mongodb_db[TBL_ALBUM_INFO]
 
     def close_spider(self, spider):
         self.mongodb_client.close()
 
     def process_item(self, item, spider):
+      try:
         if isinstance(item, ImageItem):
-            self.mongodb_db[TBL_IMAGE_INFO].insert(dict(item))
+            self.image_info_collection.insert(dict(item))
         elif isinstance(item, AlbumItem):
-            self.mongodb_db[TBL_ALBUM_INFO].insert(dict(item))
+            self.album_info_collection.insert(dict(item))
         elif isinstance(item, PersonItem):
-            self.mongodb_db[TBL_PERSION_INFO].insert(dict(item))
+            self.person_info_collection.insert(dict(item))
         elif isinstance(item, dict):
             category_doc = self.mongodb_db[TBL_CATEGORY_INFO]
             for k,v in item.items():
@@ -57,3 +60,6 @@ class StoreDBPipeline(object):
                   category_doc.update_one({'name': k}, {'$set': {'count':v}})
         elif isinstance(item, ErrorInfoItem):
             self.mongodb_db[TBL_ERROR_INFO].insert(dict(item))
+      except Exception, e:
+        spider.logger.error("process_item error. item: %r, err: %r" % (item, e))
+

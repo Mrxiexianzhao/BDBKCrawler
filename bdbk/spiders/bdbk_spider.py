@@ -8,6 +8,7 @@ import traceback
 
 import scrapy
 import redis # https://github.com/andymccurdy/redis-py
+import pymongo
 
 from bdbk.items import PersonItem
 from bdbk.items import AlbumItem
@@ -20,21 +21,35 @@ from bdbk.utils import now_string
 # generic settings
 BAIDU_DOMAIN = ['baidu.com']
 
+def getYN(prompt):
+    str = raw_input(prompt)
+    str = str.lower()
+    if str != 'y' and str != 'n':
+      return getYN(prompt)
+    return str == 'y'
+
 class CategorySpider(scrapy.Spider):
     name = 'bdbk.category'
     allowed_domains = BAIDU_DOMAIN
 
     def __init__(self, url=None, *args, **kwargs):
         self.start_page = url
-        self.follow_link= False
-        if self.start_page == None:
-            self.follow_link = True
+        self.rerun = False
+        self.follow_link= True
+        self.flushRedis = False
         super(CategorySpider, self).__init__(*args, **kwargs)
 
     def start_requests(self):
+        if not getYN("ready for run?(y/n): "):
+            return
+
         # create dir
         self.data_path = os.path.join('.', self.settings["DATA_PATH"])
         self.ignore_tags = self.settings['IGNORE_TAGS']
+
+        self.rerun = self.settings["RERUN"]
+        self.follow_link= self.settings["FOLLOW_LINK"]
+        self.flushRedis = self.settings["FLUSH_REDIS"]
 
         try:
             mkdir(self.data_path)
@@ -46,13 +61,19 @@ class CategorySpider(scrapy.Spider):
             redis_server_host = self.settings["REDIS_SERVER_HOST"]
             redis_server_port = int(self.settings["REDIS_SERVER_PORT"])
             redis_server_db = int(self.settings['REDIS_SERVER_DB'])
+            redis_server_db_person = int(self.settings['REDIS_SERVER_DB_PERSON'])
             self.redis_client = redis.Redis(host=redis_server_host, port=redis_server_port, db=redis_server_db)
-            self.redis_client.flushdb()
-
-            self.logger.info('Redis server flushed. server addr: {0}:{1}/{2}'.format(redis_server_host,redis_server_port, redis_server_db))
-
+            self.redis_client_person = redis.Redis(host=redis_server_host, port=redis_server_port, db=redis_server_db_person)
+            if self.flushRedis:
+                self.redis_client.flushdb()
+                self.redis_client_person.flushdb()
+            self.logger.info('Redis server flushed? [{0}]. server addr: {1}:{2}/{3}'.format(self.flushRedis, redis_server_host,redis_server_port, redis_server_db))
         except redis.RedisError, err:
             raise err
+
+        if self.rerun:
+            self.logger.info("Start [RERUN] mode")
+            self.prepare_rerun()
 
         if self.start_page == None:
             self.start_page = self.settings['START_PAGE']
@@ -64,11 +85,29 @@ class CategorySpider(scrapy.Spider):
 
         yield request
 
+    def prepare_rerun(self):
+        mongodb_url = self.settings.get('MONGODB_URL'),
+        mongodb_dbname = self.settings.get('MONGODB_DB', 'bdbk')
+        mongodb_client = pymongo.MongoClient(mongodb_url)
+        mongodb_db = mongodb_client[mongodb_dbname]
+        person_col = mongodb_db['person_info']
+        self.redis_client_person.flushdb()
+        for person in person_col.find():
+            self.redis_client_person.set(person['url'], 1)
+            self.logger.warning("Set person visited. name: {0}, url: {1}".format(person['name'].encode('utf8', 'ignore'), person['url']))
+        mongodb_client.close()
+
     def parse(self, response):
         for sel in response.xpath('//a[contains(@href, "taglist")]'):
             url = response.urljoin(sel.xpath('@href').extract()[0])
             for i in range(0, 750 + 1, 10):
                 list_url = url + '&offset={0}'.format(i)
+                request = scrapy.Request(list_url, callback = self.parse_category_list)
+                yield request
+        if response.url.find('taglist') > 0:
+            for i in range(0, 750 + 1, 10):
+                list_url = url.split('&')[0] + '&offset={0}'.format(i)
+                self.logger.info("goto url: {0}.".format(list_url))
                 request = scrapy.Request(list_url, callback = self.parse_category_list)
                 yield request
 
@@ -78,42 +117,32 @@ class CategorySpider(scrapy.Spider):
             request = scrapy.Request(url, callback = self.parse_person)
             yield request
 
+    def check_visited(self, key):
+        v = self.redis_client_person.get(key)
+        if v != None:
+            self.logger.warning("{0} is visited".format(key))
+            return True
+        return False
 
     def parse_person(self, response):
         url = response.url.split('?')[0]
+        if self.check_visited(url):
+          return
 
-        '''
-        check if scanned:
-        'http://baike.baidu.com/subview/3996/3996.htm'
-        will get '3996' as an unique id(uid)
-        if got nothing, use the url as uid.
-        ''' 
-        r = re.compile(r'\D*(\d+)\D*') 
-        uid = r.findall(url)
-        if len(uid) > 0:
-          uid = uid[-1]
-        else:
-          uid = url
-
-        scann_cnt = self.redis_client.get(uid)
-        if scann_cnt != None:
-            scann_cnt = int(scann_cnt) + 1
-            self.redis_client.set(uid, scann_cnt)
-            return
-
-        self.redis_client.set(uid, 1)
-
-        # the 'keywords' meta must contains '人物'
         kwlist = response.xpath('//meta[@name="keywords"]/@content').extract()
         if len(kwlist) == 0:
+          self.redis_client_person.set(url, 1)
           return
 
         keywords = kwlist[0].encode('utf-8', 'ignore')
+        '''
+        # the 'keywords' meta must contains '人物'
         if keywords.find('人物') == -1:
+            self.redis_client_person.set(url, 1)
             return
+        '''
 
         description = response.xpath('//meta[@name="description"]/@content').extract()[0].encode('utf-8', 'ignore')
-
         page_title = response.xpath('//h1/text()').extract()[0].encode('utf-8', 'ignore')
 
         # get person tags (人物标签)
@@ -135,25 +164,29 @@ class CategorySpider(scrapy.Spider):
                 ei_item['description'] = message
                 yield ei_item
                 self.logger.warning(message)
+                self.redis_client_person.set(url, 1)
                 return
             if tag.find('人物') != -1:
                 is_person = True
             person_tags.append(tag)
             # save to redis
             category_cnt = self.redis_client.get(tag)
-            if category_cnt != None:
-                category_cnt = int(category_cnt) + 1
-            else:
+            if  str(category_cnt) == 'None':
                 category_cnt = 1
+            else:
+                category_cnt = int(category_cnt) + 1
             self.redis_client.set(tag, category_cnt)
 
             categories[tag] = category_cnt
 
         # if tags do not contains |人物|, just follow link
         if is_person == False and self.follow_link == True:
+            self.redis_client_person.set(url, 1)
             # follow link that which url contains |view|(view/subview)
             for sel in response.xpath('//a[contains(@href, "view")]'):
                 url = response.urljoin(sel.xpath('@href').extract()[0].split('?')[0])
+                if self.check_visited(url):
+                    return
                 request = scrapy.Request(url, callback = self.parse_person)
                 yield request
             return
@@ -161,9 +194,9 @@ class CategorySpider(scrapy.Spider):
         person_item = PersonItem()
         person_item['name'] = page_title
         person_item['url'] = url
-        person_item['keywords'] = keywords
         person_item['description'] = description
         person_item['tags'] = person_tags
+        person_item['keywords'] = keywords 
 
         summary_pic = response.xpath('//div[@class="summary-pic"]/a/img/@src').extract()
         if len(summary_pic) > 0:
@@ -235,12 +268,17 @@ class CategorySpider(scrapy.Spider):
                 request.meta["from_url"] = image_gallery_url
                 yield request
 
+        # set visited
+        self.redis_client_person.set(person_item['url'], 1)
+
         if self.follow_link == False:
             return
 
         # follow link that which url contains |view|(view/subview)
         for sel in response.xpath('//a[contains(@href, "view")]'):
             url = response.urljoin(sel.xpath('@href').extract()[0].split('?')[0])
+            if self.check_visited(url):
+                return
             request = scrapy.Request(url, callback = self.parse_person)
             yield request
 
@@ -377,8 +415,6 @@ class CategorySpider(scrapy.Spider):
               src = image_item['src']
               scann_cnt = self.redis_client.get(src)
               if scann_cnt != None:
-                  scann_cnt = int(scann_cnt) + 1
-                  self.redis_client.set(src, scann_cnt)
                   continue 
               self.redis_client.set(src, 1)
 

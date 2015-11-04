@@ -15,6 +15,10 @@ SPIDER_MODULES = ['bdbk.spiders']
 NEWSPIDER_MODULE = 'bdbk.spiders'
 
 # generic settings
+RERUN = False
+FOLLOW_LINK = True
+FLUSH_REDIS = True
+
 START_PAGE = 'http://baike.baidu.com/class/1408.html'
 IGNORE_TAGS = [
 '虚拟人物', 
@@ -38,6 +42,7 @@ DATA_PATH = "data"
 REDIS_SERVER_HOST = '127.0.0.1'
 REDIS_SERVER_PORT = '6379'
 REDIS_SERVER_DB = '0'
+REDIS_SERVER_DB_PERSON = '1'
 
 #mongodb server
 MONGODB_URL = 'mongodb://127.0.0.1:8484'

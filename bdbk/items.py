@@ -7,6 +7,9 @@
 
 import scrapy
 
+class RerunItem(scrapy.Item):
+    rerun = scrapy.Field()
+
 class PersonItem(scrapy.Item):
     name = scrapy.Field()
     url = scrapy.Field()
